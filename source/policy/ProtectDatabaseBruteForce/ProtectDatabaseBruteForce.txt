@@ -1,0 +1,209 @@
+config waf custom-access rule
+  edit "BruteForce"
+    set action block-period
+    set block-period 600
+    set severity High
+    set bot-recognition captcha-enforcement
+    set bot-confirmation enable
+    set validation-timeout 5
+    config  source-ip-filter
+    end
+    config  geo-filter
+    end
+    config  user-filter
+    end
+    config  url-filter
+      edit 1
+        set request-file "^\\/login\\.php$"
+      next
+    end
+    config  occurrence
+      edit 2
+        set occurrence-num 20
+        set within 10
+      next
+    end
+  next
+end
+
+
+config waf custom-access policy
+  edit "AdvanceProtection"
+    config  rule
+      edit 1
+        set rule-name BruteForce
+      next
+    end
+  next
+end
+
+
+
+config waf signature
+  edit "GeneralWebSiteProtect"
+    config  main_class_list
+      edit "010000000"
+        set fpm-status disable
+        set action alert_deny
+        set severity High
+      next
+      edit "020000000"
+        set status disable
+        set fpm-status disable
+      next
+      edit "030000000"
+        set action alert_deny
+        set severity High
+      next
+      edit "040000000"
+        set status disable
+        set fpm-status disable
+      next
+      edit "050000000"
+        set fpm-status disable
+        set action alert_deny
+        set severity High
+      next
+      edit "060000000"
+        set status disable
+        set fpm-status disable
+      next
+      edit "070000000"
+        set fpm-status disable
+        set action alert_deny
+      next
+      edit "080000000"
+        set status disable
+        set fpm-status disable
+        set severity Low
+      next
+      edit "090000000"
+        set fpm-status disable
+        set action alert_deny
+        set severity High
+      next
+      edit "100000000"
+        set status disable
+        set fpm-status disable
+        set severity High
+      next
+    end
+    config  sub_class_disable_list
+    end
+    config  signature_disable_list
+      edit "060030001"
+      next
+      edit "060120001"
+      next
+      edit "080080005"
+      next
+      edit "080200001"
+      next
+      edit "080080003"
+      next
+      edit "090410001"
+      next
+      edit "090410002"
+      next
+      edit "040000141"
+      next
+      edit "040000136"
+      next
+      edit "060180001"
+      next
+      edit "060180002"
+      next
+      edit "060180003"
+      next
+      edit "060180004"
+      next
+      edit "060180005"
+      next
+      edit "060180006"
+      next
+      edit "060180007"
+      next
+      edit "060180008"
+      next
+      edit "010000072"
+      next
+      edit "010000092"
+      next
+      edit "010000093"
+      next
+      edit "010000214"
+      next
+      edit "030000182"
+      next
+      edit "030000195"
+      next
+      edit "030000204"
+      next
+      edit "050140001"
+      next
+      edit "050140003"
+      next
+      edit "050140004"
+      next
+      edit "050220001"
+      next
+      edit "080200004"
+      next
+      edit "080200005"
+      next
+      edit "080210001"
+      next
+      edit "080210002"
+      next
+      edit "080210003"
+      next
+      edit "080210004"
+      next
+      edit "080210005"
+      next
+      edit "090240001"
+      next
+      edit "050180003"
+      next
+    end
+    config  alert_only_list
+    end
+    config  fpm_disable_list
+    end
+    config  scoring_override_disable_list
+    end
+    config  score_grade_list
+    end
+    config  filter_list
+    end
+  next
+end
+
+config waf syntax-based-attack-detection
+  edit "SyntaxBasedDetection"
+    config  exception-element-list
+    end
+  next
+end
+
+config waf x-forwarded-for
+  edit "x-forwarded-for"
+    set tracing-original-ip enable
+    set original-ip-header X-FORWARDED-FOR
+    config  ip-list
+    end
+    set block-based-on-original-ip enable
+    set skip-private-original-ip disable
+  next
+end
+
+config waf web-protection-profile inline-protection
+  edit "ProtectDatabaseBruteForce"
+    set signature-rule GeneralWebSiteProtect
+    set x-forwarded-for-rule x-forwarded-for
+    set redirect-url http://
+    set custom-access-policy AdvanceProtection
+    set ip-intelligence enable
+    set syntax-based-attack-detection SyntaxBasedDetection
+  next
+end

@@ -1,0 +1,680 @@
+# ./build-s3-dist.sh liuchunhua-csdc-code liuchunhua-csdc-code waf v1.0.0
+AWSTemplateFormatVersion: 2010-09-09
+Description: >-
+Description: (WAF) - The AWS CloudFormation template for deployment of the %%SOLUTION_NAME%%. Version %%VERSION%%
+  FortiWeb HA Auto Deploy Solution (New VPC). This template deploys Fortinet
+  FortiWeb HA cluster into a new VPC with a Multi-AZ Autoscale group with Lambda
+  and LifecycleHook. Please see the HA Auto Deploy documentation for more
+  details. **WARNING** You will be billed for the FortiWeb HA instances and
+  related AWS resources if you create a stack from this template.
+
+Parameters:
+
+  CustomIdentifier:
+    Type: String
+    Default: fwbha
+    MaxLength: '10'
+    AllowedPattern: '[A-Za-z0-9]+'
+    ConstraintDescription: >-
+      must only contain uppercase and lowercase letters and numbers. Max length
+      is 10.
+    Description: >-
+      A custom identifier as resource name prefix. Must be at most 10 characters
+      long and only contain uppercase, lowercase letters, and numbers. Max
+      length is 10.
+
+  HAS3BucketName:
+    Type: String
+    AllowedPattern: '^[0-9a-zA-Z]+([0-9a-zA-Z-]*[0-9a-zA-Z])*$'
+    ConstraintDescription: >-
+      HA Auto Deploy bucket name can include numbers, lowercase letters,
+      uppercase letters, and hyphens (-). It cannot start or end with a hyphen
+      (-).
+    Description: >-
+      S3 bucket name for store License file.
+
+  HAS3KeyPrefix:
+    Type: String
+    AllowedPattern: '^[0-9a-zA-Z-/.]*$'
+    ConstraintDescription: >-
+      HA Auto Deploy key prefix can include numbers, lowercase letters,
+      uppercase letters, hyphens (-), and forward slash (/).
+    Description: >-
+      S3 key prefix (folder) which store license file. For Example: license/
+
+  AvailabilityZones:
+    Description: >-
+      The list of Availability Zones to use for the subnets in the VPC. The HA
+      Auto Deploy uses two Availability Zones from your list and preserves the
+      logical order you specify.
+    Type: 'List<AWS::EC2::AvailabilityZone::Name>'
+
+  VPCCIDR:
+    Type: String
+    Default: 10.0.0.0/16
+    AllowedPattern: >-
+      ^(([0-9]|[1-9][0-9]|1[0-9][0-9]|2[0-4][0-9]|25[0-5])\.){3}([0-9]|[1-9][0-9]|1[0-9][0-9]|2[0-4][0-9]|25[0-5]){1}(\/([0-9]|[1-2][0-9]|3[0-2]))?$
+    ConstraintDescription: must be a valid CIDR block format.
+    Description: The CIDR block for the VPC.
+  PublicSubnet1CIDR:
+    Type: String
+    Default: 10.0.0.0/24
+    AllowedPattern: >-
+      ^(([0-9]|[1-9][0-9]|1[0-9][0-9]|2[0-4][0-9]|25[0-5])\.){3}([0-9]|[1-9][0-9]|1[0-9][0-9]|2[0-4][0-9]|25[0-5]){1}(\/([0-9]|[1-2][0-9]|3[0-2]))?$
+    ConstraintDescription: must be a valid CIDR block format.
+    Description: The CIDR block for the public (DMZ) subnet located in Availability Zone 1.
+
+  PublicSubnet2CIDR:
+    Type: String
+    Default: 10.0.1.0/24
+    AllowedPattern: >-
+      ^(([0-9]|[1-9][0-9]|1[0-9][0-9]|2[0-4][0-9]|25[0-5])\.){3}([0-9]|[1-9][0-9]|1[0-9][0-9]|2[0-4][0-9]|25[0-5]){1}(\/([0-9]|[1-2][0-9]|3[0-2]))?$
+    ConstraintDescription: must be a valid CIDR block format.
+    Description: The CIDR block for the public (DMZ) subnet located in Availability Zone 2.
+
+  PrivateSubnet1CIDR:
+    Type: String
+    Default: 10.0.2.0/24
+    AllowedPattern: >-
+      ^(([0-9]|[1-9][0-9]|1[0-9][0-9]|2[0-4][0-9]|25[0-5])\.){3}([0-9]|[1-9][0-9]|1[0-9][0-9]|2[0-4][0-9]|25[0-5]){1}(\/([0-9]|[1-2][0-9]|3[0-2]))?$
+    ConstraintDescription: must be a valid CIDR block format.
+    Description: The CIDR block for the private (Fortiweb) subnet located in Availability Zone 1.
+
+  PrivateSubnet2CIDR:
+    Type: String
+    Default: 10.0.3.0/24
+    AllowedPattern: >-
+      ^(([0-9]|[1-9][0-9]|1[0-9][0-9]|2[0-4][0-9]|25[0-5])\.){3}([0-9]|[1-9][0-9]|1[0-9][0-9]|2[0-4][0-9]|25[0-5]){1}(\/([0-9]|[1-2][0-9]|3[0-2]))?$
+    ConstraintDescription: must be a valid CIDR block format.
+    Description: The CIDR block for the private (Fortiweb) subnet located in Availability Zone 2.
+
+  # PrivateSubnet3CIDR:
+  #   Type: String
+  #   Default: 10.0.4.0/24
+  #   AllowedPattern: >-
+  #     ^(([0-9]|[1-9][0-9]|1[0-9][0-9]|2[0-4][0-9]|25[0-5])\.){3}([0-9]|[1-9][0-9]|1[0-9][0-9]|2[0-4][0-9]|25[0-5]){1}(\/([0-9]|[1-2][0-9]|3[0-2]))?$
+  #   ConstraintDescription: must be a valid CIDR block format.
+  #   Description: The CIDR block for the private (web) subnet located in Availability Zone 1.
+  # PrivateSubnet4CIDR:
+  #   Type: String
+  #   Default: 10.0.5.0/24
+  #   AllowedPattern: >-
+  #     ^(([0-9]|[1-9][0-9]|1[0-9][0-9]|2[0-4][0-9]|25[0-5])\.){3}([0-9]|[1-9][0-9]|1[0-9][0-9]|2[0-4][0-9]|25[0-5]){1}(\/([0-9]|[1-2][0-9]|3[0-2]))?$
+  #   ConstraintDescription: must be a valid CIDR block format.
+  #   Description: The CIDR block for the private (web) subnet located in Availability Zone 2.
+
+  FortiWebImageVersion:
+    Type: String
+    Default: LATEST
+    ConstraintDescription: must be a valid FortiWeb version.
+    Description: The version of FortiWeb Image.
+    AllowedValues:
+      - LATEST
+
+  FortiWebImageType:
+    Type: String
+    Default: BYOL
+    ConstraintDescription: must be a valid FortiWeb Image type.
+    Description: The type of FortiWeb Image.
+    AllowedValues:
+      - BYOL
+
+  FortiWebInstanceType:
+    Type: String
+    Default: c5.large
+    AllowedValues:
+      - m5.large
+      - m5.xlarge
+      - m5.2xlarge
+      - m4.large
+      - m4.xlarge
+      - m4.2xlarge
+      - m3.medium
+      - m3.large
+      - m3.xlarge
+      - m3.2xlarge
+      - c5.large
+      - c5.xlarge
+      - c5.2xlarge
+      - c4.large
+      - c4.xlarge
+      - c4.2xlarge
+      - c3.large
+      - c3.xlarge
+      - c3.2xlarge
+    ConstraintDescription: must be a valid EC2 instance type.
+    Description: >-
+      Instance type to launch as FortiWeb instances. For more information about
+      instance types, see https://aws.amazon.com/ec2/instance-types.
+
+  FortiWebHAMode:
+    Type: String
+    Default: active-active-high-volume
+    AllowedValues:
+      - active-active-high-volume
+      - active-active-standard
+      - active-passive
+    ConstraintDescription: must chose a HA mode.
+    Description: HA work mode.
+
+  FortiWebHAGroupName:
+    Type: String
+    Default: FWHAGroup
+    MaxLength: '19'
+    AllowedPattern: '[A-Za-z0-9]+'
+    ConstraintDescription: >-
+      must only contain uppercase and lowercase letters and numbers. Max length is 19.
+    Description: >-
+      HA group name, must only contain uppercase and lowercase letters and numbers. Max length is 19.
+
+  FortiWebInstancesCount:
+    Type: Number
+    Default: 2
+    MinValue: 1
+    MaxValue: 8
+    ConstraintDescription: must be a valid number between 1 and 8.
+    Description: >-
+      Number of FortiWeb instances in the HA cluster. Minimum is 1. Maximum is 8.
+
+  FortiWebHAGroupID:
+    Type: Number
+    Default: 30
+    MinValue: 0
+    MaxValue: 63
+    ConstraintDescription: must be a valid number between 0 and 63..
+    Description: Type a group id that identifies of HA cluster. Minimum is 0. Maximum is 63
+
+  FortiWebHAOverride:
+    Type: String
+    Default: disable
+    AllowedValues:
+      - disable
+    ConstraintDescription: HA override.
+    Description: HA Override.
+
+  FortiWebHttpPort:
+    Type: Number
+    Default: 80
+    MinValue: 1
+    MaxValue: 65535
+    ConstraintDescription: must be a valid port number between 1 and 65535.
+    Description: >-
+      Receive HTTP web service traffic through this port. Minimum is 1. Maximum is 65535.
+
+  FortiWebHttpsPort:
+    Type: Number
+    Default: 443
+    MinValue: 1
+    MaxValue: 65535
+    ConstraintDescription: must be a valid port number between 1 and 65535.
+    Description: >-
+      Receive HTTPS web service traffic through this port. Minimum is 1. Maximum is 65535.
+
+  FortiWebAdminPort:
+    Type: Number
+    Default: 8443
+    AllowedValues:
+      - 8443
+      - 8080
+    ConstraintDescription: must be 8080 or 8443.
+    Description: >-
+      A port number for FortiWeb administration. Use 8080 for HTTP access and 8443 for HTTPS access.
+
+  KeyPairName:
+    Type: 'AWS::EC2::KeyPair::KeyName'
+    ConstraintDescription: must specify an admin access key pair for FortiWeb instances.
+    Description: Amazon EC2 Key Pair for admin access.
+
+  FortiWebAdminPassword:
+    Type: String
+    NoEcho: true
+    MinLength: '8'
+    MaxLength: '16'
+    AllowedPattern: >-
+      ^(?=.*[a-z])(?=.*[A-Z])(?=.*[0-9])(?=.*[$@$!%*#?&])[A-Za-z0-9$@$!%*#?&]{8,16}$
+    Description: >-
+      The admin password for deployed FortiWebs. The password needs to contain lowercase letters, uppercase letters, numbers, one of these special characters "$@$!%*#?&", and the length is between 8-16.
+Conditions:
+  GovCloudCondition: !Equals 
+    - !Ref 'AWS::Region'
+    - us-gov-west-1
+  IfAddNewEIP: !Equals 
+    - !Ref FortiWebHAMode
+    - active-passive
+  IfAddNewLoadBalancer: !Not 
+    - !Equals 
+      - !Ref FortiWebHAMode
+      - active-passive
+Mappings:
+  FortiWebImageVersionMap:
+    FortiWebVersionMap:
+      LATEST: '631'
+      V631: '631'
+
+  SourceCode:
+    General:
+        S3Bucket: "%%BUCKET_NAME%%"
+        KeyPrefix: "%%SOLUTION_NAME%%/%%VERSION%%"
+    App:
+        ShortName: "FortiWebHAWAF"
+        FullName: "FortiWeb HA WAF Solution"
+
+Resources:
+  StackCreateNewVPC:
+    Type: 'AWS::CloudFormation::Stack'
+    Properties:
+      Parameters:
+        AvailabilityZones: !Join 
+          - ','
+          - !Ref AvailabilityZones
+        VPCCIDR: !Ref VPCCIDR
+        PublicSubnet1CIDR: !Ref PublicSubnet1CIDR
+        PublicSubnet2CIDR: !Ref PublicSubnet2CIDR
+        CustomIdentifier: !Ref CustomIdentifier
+      TemplateURL:  https://s3.cn-north-1.amazonaws.com.cn/%%TEMPLATE_BUCKET_NAME%%/%%SOLUTION_NAME%%/%%VERSION%%/ha-vpc-create-nlb.template
+      TimeoutInMinutes: '10'
+  FwbHASecurityGroup:
+    Type: 'AWS::EC2::SecurityGroup'
+    Metadata:
+      cfn_nag:
+        rules_to_suppress:
+            - id: W2 
+              reason: "Allow all outbound protocol"
+            - id: W5 
+              reason: "Allow all outbound protocol"
+            - id: W9  
+              reason: "Allow all outbound protocol"
+            - id: W42 
+              reason: "Allow all outbound protocol"
+            - id: W40
+              reason: "Allow all outbound protocol"
+    Properties:
+      GroupDescription: FortiWeb security group
+      VpcId: !GetAtt 
+        - StackCreateNewVPC
+        - Outputs.FwbHAVpc
+      Tags:
+        - Key: Name
+          Value: 'FortiWeb security group'
+  FwbHASecurityGroupIngressInternal:
+    Type: 'AWS::EC2::SecurityGroupIngress'
+    Properties:
+      GroupId: !Ref FwbHASecurityGroup
+      Description: 'Ingress'
+      IpProtocol: '-1'
+      CidrIp: !Ref VPCCIDR
+  FwbHASecurityGroupIngressSSH:
+    Type: 'AWS::EC2::SecurityGroupIngress'
+    Properties:
+      GroupId: !Ref FwbHASecurityGroup
+      Description: 'Ingress SSH'
+      IpProtocol: tcp
+      FromPort: '22'
+      ToPort: '22'
+      CidrIp: 0.0.0.0/0
+  FwbHASecurityGroupIngressAdminAccess:
+    Type: 'AWS::EC2::SecurityGroupIngress'
+    Properties:
+      GroupId: !Ref FwbHASecurityGroup
+      Description: 'Ingress Admin Access'
+      IpProtocol: tcp
+      FromPort: !Ref FortiWebAdminPort
+      ToPort: !Ref FortiWebAdminPort
+      CidrIp: 0.0.0.0/0
+  FwbHASecurityGroupEgressInternal:
+    Type: 'AWS::EC2::SecurityGroupEgress'
+    Metadata:
+      cfn_nag:
+        rules_to_suppress:
+            - id: W40
+              reason: "Allow all outbound protocol"
+    Properties:
+      GroupId: !Ref FwbHASecurityGroup
+      Description: 'Egress Internal'
+      IpProtocol: '-1'
+      CidrIp: 0.0.0.0/0
+  FwbSecurityGroupIngressAllowedTraffic1:
+    Type: 'AWS::EC2::SecurityGroupIngress'
+    Properties:
+      GroupId: !Ref FwbHASecurityGroup
+      Description: 'IngressAllowedTraffic1'
+      IpProtocol: tcp
+      FromPort: !Ref FortiWebHttpsPort
+      ToPort: !Ref FortiWebHttpsPort
+      CidrIp: 0.0.0.0/0
+  FwbSecurityGroupIngressAllowedTraffic2:
+    Type: 'AWS::EC2::SecurityGroupIngress'
+    Properties:
+      GroupId: !Ref FwbHASecurityGroup
+      Description: 'IngressAllowedTraffic2'
+      IpProtocol: tcp
+      FromPort: !Ref FortiWebHttpPort
+      ToPort: !Ref FortiWebHttpPort
+      CidrIp: 0.0.0.0/0
+  FwbHACreateEIP:
+    Type: 'AWS::EC2::EIP'
+    Condition: IfAddNewEIP
+    Properties:
+      Domain: vpc
+      Tags:
+        - Key: Name
+          Value: !Ref CustomIdentifier
+  StackCreateInstances:
+    Type: 'AWS::CloudFormation::Stack'
+    Properties:
+      Parameters:
+        FortiWebInstanceType: !Ref FortiWebInstanceType
+        FortiWebInstanceImage: !Join 
+          - ''
+          - - FWB
+            - !Ref FortiWebImageType
+            - !FindInMap 
+              - FortiWebImageVersionMap
+              - FortiWebVersionMap
+              - !Ref FortiWebImageVersion
+        FortiWebInstancesCount: !Ref FortiWebInstancesCount
+        FortiWebHAGroupName: !Ref FortiWebHAGroupName
+        FortiWebAdminPassword: !Ref FortiWebAdminPassword
+        FortiWebHAMode: !Ref FortiWebHAMode
+        FortiWebHAGroupID: !Ref FortiWebHAGroupID
+        FortiWebHAOverride: !Ref FortiWebHAOverride
+        CustomIdentifier: !Ref CustomIdentifier
+        FwbHASecurityGroup: !Ref FwbHASecurityGroup
+        KeyPairName: !Ref KeyPairName
+        HAS3BucketName: !Ref HAS3BucketName
+        HAS3KeyPrefix: !Ref HAS3KeyPrefix
+        FortiWebHACfName: !Ref 'AWS::StackName'
+        PublicSubnet1: !GetAtt 
+          - StackCreateNewVPC
+          - Outputs.PublicSubnet1
+        PublicSubnet2: !GetAtt 
+          - StackCreateNewVPC
+          - Outputs.PublicSubnet2
+        PrivateSubnet1: !GetAtt 
+          - StackCreateNewVPC
+          - Outputs.PrivateSubnet1
+        PrivateSubnet2: !GetAtt 
+          - StackCreateNewVPC
+          - Outputs.PrivateSubnet2
+        # PrivateSubnet3: !GetAtt 
+        #   - StackCreateNewVPC
+        #   - Outputs.PrivateSubnet3
+        # PrivateSubnet4: !GetAtt 
+        #   - StackCreateNewVPC
+        #   - Outputs.PrivateSubnet4
+        FwbEIPId: !If 
+          - IfAddNewEIP
+          - !GetAtt 
+            - FwbHACreateEIP
+            - AllocationId
+          - Only AP mode need EIP
+        FwbEIPIP: !If 
+          - IfAddNewEIP
+          - !Ref FwbHACreateEIP
+          - Only AP mode need EIP
+        ELBHTTPSTargetGroup: !If 
+          - IfAddNewLoadBalancer
+          - !Ref ElbV2HTTPSTargetGroupFwbHa
+          - Only AA/Cluster mode need ELB
+        ELBHTTPTargetGroup: !If 
+          - IfAddNewLoadBalancer
+          - !Ref ElbV2HTTPTargetGroupFwbHa
+          - Only AA/Cluster mode need ELB
+      TemplateURL: https://s3.cn-north-1.amazonaws.com.cn/%%TEMPLATE_BUCKET_NAME%%/%%SOLUTION_NAME%%/%%VERSION%%/ha-instance-create-nlb.template
+      TimeoutInMinutes: '10'
+  ElbV2HTTPTargetGroupFwbHa:
+    Type: 'AWS::ElasticLoadBalancingV2::TargetGroup'
+    Condition: IfAddNewLoadBalancer
+    Properties:
+      Name: !Join 
+        - '-'
+        - - !Ref CustomIdentifier
+          - HTTPtgFwb
+          - !Select 
+            - 0
+            - !Split 
+              - '-'
+              - !Select 
+                - 2
+                - !Split 
+                  - /
+                  - !Ref 'AWS::StackId'
+      Protocol: TCP
+      Port: !Ref FortiWebHttpPort
+      HealthCheckProtocol: TCP
+      HealthCheckPort: !Ref FortiWebHttpPort
+      VpcId: !GetAtt 
+        - StackCreateNewVPC
+        - Outputs.FwbHAVpc
+  ElbV2HTTPSTargetGroupFwbHa:
+    Type: 'AWS::ElasticLoadBalancingV2::TargetGroup'
+    Condition: IfAddNewLoadBalancer
+    Properties:
+      Name: !Join 
+        - '-'
+        - - !Ref CustomIdentifier
+          - HTTPStgFwb
+          - !Select 
+            - 0
+            - !Split 
+              - '-'
+              - !Select 
+                - 2
+                - !Split 
+                  - /
+                  - !Ref 'AWS::StackId'
+      Protocol: TCP
+      Port: !Ref FortiWebHttpsPort
+      HealthCheckProtocol: TCP
+      HealthCheckPort: !Ref FortiWebHttpsPort
+      VpcId: !GetAtt 
+        - StackCreateNewVPC
+        - Outputs.FwbHAVpc
+  ElbV2LoadBalancerFwbHa:
+    Type: 'AWS::ElasticLoadBalancingV2::LoadBalancer'
+    Metadata:
+      cfn_nag:
+        rules_to_suppress:
+            - id: W52 
+              reason: "Elastic Load Balancer V2 need not access logging enabled"
+            - id: W28
+              reason: "Resource found with an explicit name"
+    Condition: IfAddNewLoadBalancer
+    Properties:
+      Scheme: internet-facing
+      Type: network
+      Subnets:
+        - !GetAtt 
+          - StackCreateNewVPC
+          - Outputs.PublicSubnet1
+        - !GetAtt 
+          - StackCreateNewVPC
+          - Outputs.PublicSubnet2
+      Name: !Join 
+        - '-'
+        - - !Ref CustomIdentifier
+          - nlbFwb
+          - !Select 
+            - 0
+            - !Split 
+              - '-'
+              - !Select 
+                - 2
+                - !Split 
+                  - /
+                  - !Ref 'AWS::StackId'
+      Tags:
+        - Key: Name
+          Value: 'FW-NLB'
+    DependsOn:
+      - ElbV2HTTPSTargetGroupFwbHa
+      - ElbV2HTTPTargetGroupFwbHa
+  ElbV2HTTPListenerFwbHa:
+    Type: 'AWS::ElasticLoadBalancingV2::Listener'
+    Metadata:
+      cfn_nag:
+        rules_to_suppress:
+            - id: W56
+              reason: "Just use ALB to forward HTTP request"
+    Condition: IfAddNewLoadBalancer
+    Properties:
+      LoadBalancerArn: !Ref ElbV2LoadBalancerFwbHa
+      DefaultActions:
+        - Type: forward
+          TargetGroupArn: !Ref ElbV2HTTPTargetGroupFwbHa
+      Protocol: TCP
+      Port: !Ref FortiWebHttpPort
+    DependsOn:
+      - ElbV2LoadBalancerFwbHa
+      - ElbV2HTTPTargetGroupFwbHa
+  ElbV2HTTPSListenerFwbHa:
+    Type: 'AWS::ElasticLoadBalancingV2::Listener'
+    Condition: IfAddNewLoadBalancer
+    Properties:
+      LoadBalancerArn: !Ref ElbV2LoadBalancerFwbHa
+      DefaultActions:
+        - Type: forward
+          TargetGroupArn: !Ref ElbV2HTTPSTargetGroupFwbHa
+      Protocol: TCP
+      Port: !Ref FortiWebHttpsPort
+    DependsOn:
+      - ElbV2LoadBalancerFwbHa
+      - ElbV2HTTPSTargetGroupFwbHa
+Metadata:
+  'AWS::CloudFormation::Interface':
+    ParameterGroups:
+      - Label:
+          default: Common configuration
+        Parameters:
+          - AvailabilityZones
+          - CustomIdentifier
+          - HAS3BucketName
+          - HAS3KeyPrefix
+          - KeyPairName
+      - Label:
+          default: Network configuration
+        Parameters:
+          - VPCCIDR
+          - PublicSubnet1CIDR
+          - PublicSubnet2CIDR
+          - PrivateSubnet1CIDR
+          - PrivateSubnet2CIDR
+          # - PrivateSubnet3CIDR
+          # - PrivateSubnet4CIDR
+      - Label:
+          default: FortiWeb configuration
+        Parameters:
+          - FortiWebImageType
+          - FortiWebImageVersion
+          - FortiWebInstanceType
+          - FortiWebInstancesCount
+          - FortiWebAdminPassword
+          - FortiWebAdminPort
+          - FortiWebHttpPort
+          - FortiWebHttpsPort
+      - Label:
+          default: FortiWeb HA configuration
+        Parameters:
+          - FortiWebHAMode
+          - FortiWebHAGroupName
+          - FortiWebHAGroupID
+          - FortiWebHAOverride
+    ParameterLabels:
+      AvailabilityZones:
+        default: Availability Zones
+      CustomIdentifier:
+        default: Resource name prefix
+      HAS3BucketName:
+        default: S3 bucket name which store fortiweb license file
+      HAS3KeyPrefix:
+        default: S3 key prefix which store fortiweb license file
+      KeyPairName:
+        default: Key pair name
+      VPCCIDR:
+        default: VPC CIDR
+      PublicSubnet1CIDR:
+        default: VPC Public Subnet1
+      PublicSubnet2CIDR:
+        default: VPC public Subnet2
+      PrivateSubnet1CIDR:
+        default: VPC Private Subnet1
+      PrivateSubnet2CIDR:
+        default: VPC Private Subnet2
+      # PrivateSubnet3CIDR:
+      #   default: VPC Private Subnet3
+      # PrivateSubnet4CIDR:
+      #   default: VPC Private Subnet4
+      FortiWebImageType:
+        default: FortiWeb Image Type
+      FortiWebImageVersion:
+        default: FortiWeb Image Version
+      FortiWebInstanceType:
+        default: FortiWeb Instance type
+      FortiWebInstancesCount:
+        default: FortiWeb Instance Count
+      FortiWebAdminPassword:
+        default: FortiWeb Admin password
+      FortiWebAdminPort:
+        default: FortiWeb Admin Port
+      FortiWebHttpPort:
+        default: FortiWeb Http Port
+      FortiWebHttpsPort:
+        default: FortiWeb Https Port
+      FortiWebHAMode:
+        default: FortiWeb HA Mode
+      FortiWebHAGroupName:
+        default: FortiWeb HA Group Name
+      FortiWebHAGroupID:
+        default: FortiWeb HA GroupID
+      FortiWebHAOverride:
+        default: FortiWeb HA Override
+Outputs:
+  InstanceId:
+    Description: Fortiweb Instance Id list
+    Value: !GetAtt 
+      - StackCreateInstances
+      - Outputs.InstancesId
+  VpcId:
+    Description: Vpc id
+    Value: !GetAtt 
+      - StackCreateNewVPC
+      - Outputs.FwbHAVpc
+  PublicSubnet1:
+    Description: PublicSubnet1
+    Value: !GetAtt 
+      - StackCreateNewVPC
+      - Outputs.PublicSubnet1
+  PublicSubnet1:
+    Description: PublicSubnet2
+    Value: !GetAtt 
+      - StackCreateNewVPC
+      - Outputs.PublicSubnet2
+  PrivateSubnet1:
+    Description: PrivateSubnet1
+    Value: !GetAtt 
+      - StackCreateNewVPC
+      - Outputs.PrivateSubnet1
+  PrivateSubnet2:
+    Description: PrivateSubnet2
+    Value: !GetAtt 
+      - StackCreateNewVPC
+      - Outputs.PrivateSubnet2
+  EipId:
+    Description: Elastic Id
+    Condition: IfAddNewEIP
+    Value: !GetAtt 
+      - FwbHACreateEIP
+      - AllocationId
+  EipIP:
+    Description: Elastic IP
+    Condition: IfAddNewEIP
+    Value: !Ref FwbHACreateEIP
+  LoadBalancer:
+    Description: LoadBalancer DNS name
+    Condition: IfAddNewLoadBalancer
+    Value: !GetAtt 
+      - ElbV2LoadBalancerFwbHa
+      - DNSName
+  SecurityGroup:
+    Description: Security Group Id
+    Value: !Ref FwbHASecurityGroup
