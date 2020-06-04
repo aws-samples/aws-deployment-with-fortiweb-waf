@@ -61,9 +61,9 @@ Mappings:
     AMI:
       FWBPAYG611: FortiWeb-AWS-6.1.1_OnDemand_Release
     cn-north-1:
-      FWBBYOL631: ami-0b9239afb0c1967a7
+      FWBBYOL634: ami-0018086f102a145a9
     cn-northwest-1:
-      FWBBYOL631: ami-0536f6a52b5ca23a7
+      FWBBYOL634: ami-007a8377ccfed6e36
 Resources:
   EC2Instances:
     Type: 'Custom::EC2Instances'

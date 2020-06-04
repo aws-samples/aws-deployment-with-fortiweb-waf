@@ -248,8 +248,8 @@ Conditions:
 Mappings:
   FortiWebImageVersionMap:
     FortiWebVersionMap:
-      LATEST: '631'
-      V631: '631'
+      LATEST: '634'
+      V631: '634'
 
   SourceCode:
     General:
@@ -270,6 +270,8 @@ Resources:
         VPCCIDR: !Ref VPCCIDR
         PublicSubnet1CIDR: !Ref PublicSubnet1CIDR
         PublicSubnet2CIDR: !Ref PublicSubnet2CIDR
+        PrivateSubnet1CIDR: !Ref PrivateSubnet1CIDR
+        PrivateSubnet2CIDR: !Ref PrivateSubnet2CIDR
         CustomIdentifier: !Ref CustomIdentifier
       TemplateURL:  https://s3.cn-north-1.amazonaws.com.cn/%%TEMPLATE_BUCKET_NAME%%/%%SOLUTION_NAME%%/%%VERSION%%/ha-vpc-create-nlb.template
       TimeoutInMinutes: '10'
